@@ -23,7 +23,7 @@ export default function LobbyPage() {
     >
       <img
         src={LANDING_IMAGE}
-        alt="Melbit Bingo landing page with game features, winning rules, and an Enter Game call to action"
+        alt="Kefta Bingo landing page with game features, winning rules, and an Enter Game call to action"
         style={{
           display: 'block',
           width: '100%',

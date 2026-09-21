@@ -75,7 +75,7 @@ export default function WalletPage() {
               <div style={{ fontSize: 11, color: '#aaa', fontWeight: 600, letterSpacing: '0.06em', marginBottom: 2 }}>
                 ሜን ዋሌት
               </div>
-              <div style={{ fontSize: 11, color: '#22c55e' }}>ማውጣት ይቻላል</div>
+              <div style={{ fontSize: 11, color: '#e05c00' }}>100 ብር ዲፖዚት ታሪክ ካለ ማውጣት ይቻላል</div>
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
@@ -186,8 +186,8 @@ export default function WalletPage() {
       >
         <p style={{ fontSize: 11, color: '#888', lineHeight: 1.7 }}>
           💳 <b style={{ color: '#f97316' }}>ዲፖዚት ባላንስ</b> — ያስገቡት ብር ለጨዋታ ይውላል፣ ማውጣት አይቻልም።<br />
-          💵 <b style={{ color: '#D4A017' }}>ሜን ዋሌት</b> — ከጨዋታ ያሸነፉት ብር፣ ማውጣት ይቻላል።<br />
-          🎁 <b style={{ color: '#E91E8C' }}>ቦነስ ባላንስ</b> — ቦነስ ብር፣ Wagering ሲጠናቀቅ ማውጣት ይቻላል።
+          💵 <b style={{ color: '#D4A017' }}>ሜን ዋሌት</b> — ከጨዋታ ያሸነፉት ብር፣ 100 ብር ዲፖዚት ታሪክ ካለ ማውጣት ይቻላል።<br />
+          🎁 <b style={{ color: '#E91E8C' }}>ቦነስ ባላንስ</b> — ቦነስ ብር፣ Wagering እና 100 ብር ዲፖዚት ታሪክ ሲሟሉ ማውጣት ይቻላል።
         </p>
       </div>
     </div>

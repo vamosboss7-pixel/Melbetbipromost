@@ -47,15 +47,11 @@ const _botDomain = (
 export const USE_POLLING = !_botDomain || _botDomain.includes("riker.replit.dev") || _botDomain.includes(".replit.dev");
 
 /**
- * Resolve the Telegram Mini App URL from the MINI_APP_URL environment variable.
+ * Resolve the Telegram Mini App URL from MINI_APP_URL or the public app domain.
  * The value may be either a full HTTPS URL or a hostname.
- *
- * Do not use the webhook domain as a fallback here: webhook and Mini App URLs
- * are separate settings, and a webhook-only domain can make Telegram show a
- * button that cannot open the app.
  */
 export function getMiniAppUrl(): string | null {
-  const configuredUrl = process.env["MINI_APP_URL"]?.trim();
+  const configuredUrl = process.env["MINI_APP_URL"]?.trim() || (USE_POLLING ? "" : _botDomain);
   if (!configuredUrl) return null;
 
   const candidate = /^https?:\/\//i.test(configuredUrl)
@@ -270,23 +266,13 @@ bot.command("start", async (ctx) => {
       });
       logger.info({ telegramId: user.id, invitedBy: validReferrer }, "New player registered via /start");
 
-      // Grant agent join bonus if referrer is an agent
+      // Registration and inviter bonuses are awarded once for each new player.
+      await grantSignupBonuses(user.id, validReferrer, user.first_name);
+
+      // Preserve the separate agent-wallet join bonus for agent referrers.
       if (validReferrer) {
         void grantAgentJoinBonus(validReferrer, user.first_name);
       }
-
-      // Grant 20 ETB signup bonus to bonusBalance (non-withdrawable until wagering met)
-      const SIGNUP_BONUS_ETB = 20;
-      await db.update(playersTable).set({
-        bonusBalance: sql`${playersTable.bonusBalance} + ${SIGNUP_BONUS_ETB}`,
-      }).where(eq(playersTable.telegramId, user.id));
-      await db.insert(transactionsTable).values({
-        telegramId: user.id,
-        type: "register_bonus",
-        amount: `${SIGNUP_BONUS_ETB}`,
-        status: "approved",
-        note: "20 ብር የምዝገባ ቦነስ (Bonus Balance)",
-      });
     } else {
       // Update name/username in case they changed
       await db.update(playersTable).set({
@@ -314,7 +300,7 @@ bot.command("start", async (ctx) => {
     : null;
 
   // Join Channel URL — from ANNOUNCEMENT_CHANNEL_ID env var
-  const joinChannelUrl = CHANNEL_ID ? channelJoinUrl(CHANNEL_ID) : "https://t.me/melkambingo";
+  const joinChannelUrl = CHANNEL_ID ? channelJoinUrl(CHANNEL_ID) : "https://t.me/kefetabingo";
 
   // Build inline keyboard matching app layout
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -343,7 +329,7 @@ bot.command("start", async (ctx) => {
     ],
     [
       { text: "📣 Join Channel", url: joinChannelUrl },
-      { text: "📢 Bonus Group", url: "https://t.me/+Zfrt1VTjNbxmNDhi" },
+      { text: "📢 Bonus Group", url: "https://t.me/bounsgroup" },
     ],
     // Admin button — only visible to the designated main admin
     ...(MAIN_ADMIN_TELEGRAM_ID > 0 && user.id === MAIN_ADMIN_TELEGRAM_ID
@@ -353,7 +339,7 @@ bot.command("start", async (ctx) => {
 
   // Full welcome text (for plain text messages — up to 4096 chars)
   const welcomeText =
-    `🎱 <b>እንኳን ወደ Melbet BINGO መጡ!</b>\n\n` +
+    `🎱 <b>እንኳን ወደ KEFTA BINGO መጡ!</b>\n\n` +
     `🎮 <b>ለጀማሪዎች — እንዴት ይጀምሩ?</b>\n` +
     `1️⃣ <b>👤 Register</b> — አካዉንት ይክፈቱ\n` +
     `2️⃣ <b>🏦 Add Funds</b> — ከ10ብር ጀምሮ ያስገቡ\n` +
@@ -370,7 +356,7 @@ bot.command("start", async (ctx) => {
 
   // Short caption for photo messages (Telegram limit: 1024 chars)
   const welcomeCaption =
-    `🎱 <b>እንኳን ወደ Melbet BINGO መጡ!</b>\n\n` +
+    `🎱 <b>እንኳን ወደ KEFTA BINGO መጡ!</b>\n\n` +
     `1️⃣ 👤 Register — አካዉንት ይክፈቱ\n` +
     `2️⃣ 🏦 Add Funds — ከ10ብር ጀምሮ ያስገቡ\n` +
     `3️⃣ 🎮 Play Game — ጨዋታ ይጀምሩ!\n\n` +
@@ -432,12 +418,12 @@ bot.command("start", async (ctx) => {
           { text: "🔄 Transfer", callback_data: `cmd_transfer_${user.id}` },
         ],
         [
-          { text: "📣 Join Channel", url: CHANNEL_ID ? channelJoinUrl(CHANNEL_ID) : "https://t.me/melkambingo" },
-          { text: "📢 Bonus Group", url: "https://t.me/+Zfrt1VTjNbxmNDhi" },
+          { text: "📣 Join Channel", url: CHANNEL_ID ? channelJoinUrl(CHANNEL_ID) : "https://t.me/kefetabingo" },
+          { text: "📢 Bonus Group", url: "https://t.me/bounsgroup" },
         ],
       ];
       await ctx.reply(
-        `🎱 <b>እንኳን ወደ Melbet BINGO መጡ!</b>\n\n👇 ቁልፍ ይምረጡ`,
+        `🎱 <b>እንኳን ወደ KEFTA BINGO መጡ!</b>\n\n👇 ቁልፍ ይምረጡ`,
         { parse_mode: "HTML", reply_markup: { inline_keyboard: fallbackKb } }
       );
     } catch { /* non-fatal */ }
@@ -487,7 +473,7 @@ bot.callbackQuery(/^cmd_withdraw_(\d+)$/, async (ctx) => {
     const mainBalance = Number(rows[0]!.mainBalance);
     const bonusBalance = Number(rows[0]!.bonusBalance);
 
-    // Lifetime deposit requirement: at least one approved deposit >= 50 ETB for any withdrawal.
+    // Lifetime deposit requirement: at least one approved deposit >= 100 ETB for any withdrawal.
     if (!(await hasLifetimeDeposit(userId, WITHDRAW_MIN_DEPOSIT))) {
       await ctx.reply(
         `⛔ <b>ዊዝድሮው ማድረግ አይቻልም</b>\n\n` +
@@ -561,8 +547,8 @@ bot.callbackQuery(/^cmd_invite_(\d+)$/, async (ctx) => {
   if (!botUsername) { await ctx.reply("❌ ሊንክ ማምጣት አልተቻለም።"); return; }
   const inviteLink = `https://t.me/${botUsername}?start=ref_${userId}`;
   const firstName = ctx.from.first_name ?? "ወዳጆ";
-  const shareText = `🎁 ${firstName} ወደ Melbet BINGO ወዳጅ ዘመድ ይጋበዙ እና ሸልማቶችን ያግኙ!\n\n${inviteLink}`;
-  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(`🎁 ${firstName} ወደ Melbet BINGO ወዳጅ ዘመድ ይጋበዙ እና ሸልማቶችን ያግኙ!`)}`;
+  const shareText = `🎁 ${firstName} ወደ KEFTA BINGO ወዳጅ ዘመድ ይጋበዙ እና ሸልማቶችን ያግኙ!\n\n${inviteLink}`;
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(`🎁 ${firstName} ወደ KEFTA BINGO ወዳጅ ዘመድ ይጋበዙ እና ሸልማቶችን ያግኙ!`)}`;
   await ctx.reply(shareText, {
     reply_markup: {
       inline_keyboard: [[{ text: "🔗 ሊንኩን ላክ (Share Link)", url: shareUrl }]],
@@ -731,7 +717,7 @@ bot.callbackQuery(/^cmd_howtoplay_(\d+)$/, async (ctx) => {
   if (ctx.from.id !== userId) return ctx.answerCallbackQuery();
   await ctx.answerCallbackQuery();
   await ctx.reply(
-    `📜 <b>የMelbet ቢንጎ ጨዋታ ህጎች</b>\n\n` +
+    `📜 <b>የKEFTA ቢንጎ ጨዋታ ህጎች</b>\n\n` +
     `🃏 <b>መጫወቻ ካርድ</b>\n\n` +
     `1. ጨዋታውን ለመጀመር ከሚመጣልን ከ1-500 የመጫወቻ ካርድ ውስጥ አንዱን እንመርጣለን።\n\n` +
     `2. የመጫወቻ ካርዱ ላይ በቀይ ቀለም የተመረጡ ቁጥሮች የሚያሳዩት መጫወቻ ካርድ በሌላ ተጫዋች መመረጡን ነው።\n\n` +
@@ -901,8 +887,8 @@ bot.command("invite", async (ctx) => {
   }
   const inviteLink = `https://t.me/${botUsername}?start=ref_${user.id}`;
   const firstName = user.first_name ?? "ወዳጆ";
-  const shareText = `🎁 ${firstName} ወደ Melbet BINGO ወዳጅ ዘመድ ይጋበዙ እና ሸልማቶችን ያግኙ!\n\n${inviteLink}`;
-  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(`🎁 ${firstName} ወደ Melbet BINGO ወዳጅ ዘመድ ይጋበዙ እና ሸልማቶችን ያግኙ!`)}`;
+  const shareText = `🎁 ${firstName} ወደ KEFTA BINGO ወዳጅ ዘመድ ይጋበዙ እና ሸልማቶችን ያግኙ!\n\n${inviteLink}`;
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(`🎁 ${firstName} ወደ KEFTA BINGO ወዳጅ ዘመድ ይጋበዙ እና ሸልማቶችን ያግኙ!`)}`;
   await ctx.reply(shareText, {
     reply_markup: {
       inline_keyboard: [[{ text: "🔗 ሊንኩን ላክ (Share Link)", url: shareUrl }]],
@@ -994,7 +980,7 @@ bot.command("withdraw", async (ctx) => {
     const mainBalance = Number(rows[0]!.mainBalance);
     const bonusBalance = Number(rows[0]!.bonusBalance);
 
-    // Lifetime deposit requirement: at least one approved deposit >= 50 ETB for any withdrawal.
+    // Lifetime deposit requirement: at least one approved deposit >= 100 ETB for any withdrawal.
     if (!(await hasLifetimeDeposit(user.id, WITHDRAW_MIN_DEPOSIT))) {
       await ctx.reply(
         `⛔ <b>ዊዝድሮው ማድረግ አይቻልም</b>\n\n` +
@@ -1050,8 +1036,8 @@ bot.command("pending", async (ctx) => {
     for (const dep of deposits) {
       const kb = new InlineKeyboard().text("✅ አፀድቅ", `approve_${dep.id}`).text("❌ ሰርዝ", `reject_${dep.id}`);
       await ctx.reply(
-        `📥 <b>Deposit #${dep.id}</b>\n👤 ${dep.firstName} (${dep.telegramId})\n💰 <b>${Number(dep.amount).toFixed(0)} ብር</b>\n` +
-        (dep.confirmationText ? `📝 Confirmation:\n<code>${dep.confirmationText}</code>` : ""),
+        `📥 <b>Deposit #${dep.id}</b>\n👤 ${esc(dep.firstName)} (${dep.telegramId})\n💰 <b>${Number(dep.amount).toFixed(0)} ብር</b>\n` +
+        (dep.confirmationText ? `📝 Full Teller/SMS text:\n<pre>${esc(dep.confirmationText)}</pre>` : ""),
         { parse_mode: "HTML", reply_markup: kb }
       );
     }
@@ -1187,6 +1173,61 @@ bot.command("unban", async (ctx) => {
     } catch { /* player may have blocked bot */ }
   } catch (err) { logger.error({ err }, "unban command error"); }
 });
+
+// ── Shared: grant registration and inviter bonuses ─────────────────────────────
+export async function grantSignupBonuses(
+  newUserTelegramId: number,
+  referrerTelegramId: number | null,
+  newUserFirstName: string,
+): Promise<void> {
+  const SIGNUP_BONUS_ETB = 30;
+  const INVITE_BONUS_ETB = 10;
+
+  try {
+    await db.transaction(async (tx) => {
+      await tx.update(playersTable).set({
+        bonusBalance: sql`${playersTable.bonusBalance} + ${SIGNUP_BONUS_ETB}`,
+      }).where(eq(playersTable.telegramId, newUserTelegramId));
+      await tx.insert(transactionsTable).values({
+        telegramId: newUserTelegramId,
+        type: "register_bonus",
+        amount: `${SIGNUP_BONUS_ETB}`,
+        status: "approved",
+        note: `${SIGNUP_BONUS_ETB} ብር የምዝገባ ቦነስ (Bonus Balance)`,
+      });
+
+      if (referrerTelegramId) {
+        await tx.update(playersTable).set({
+          bonusBalance: sql`${playersTable.bonusBalance} + ${INVITE_BONUS_ETB}`,
+          totalInviteBonus: sql`${playersTable.totalInviteBonus} + ${INVITE_BONUS_ETB}`,
+        }).where(eq(playersTable.telegramId, referrerTelegramId));
+        await tx.insert(transactionsTable).values({
+          telegramId: referrerTelegramId,
+          type: "invite_bonus",
+          amount: `${INVITE_BONUS_ETB}`,
+          status: "approved",
+          note: `${INVITE_BONUS_ETB} ብር የጥሪ ቦነስ — ${newUserFirstName} ተመዝግቧል`,
+        });
+      }
+    });
+
+    if (referrerTelegramId) {
+      try {
+        await bot.api.sendMessage(
+          referrerTelegramId,
+          `🎉 <b>የጥሪ ቦነስ ደረሰዎ!</b>\n\n` +
+          `👥 ${esc(newUserFirstName)} በጥሪዎ ተመዝግቧል\n` +
+          `🎁 <b>${INVITE_BONUS_ETB.toFixed(2)} ብር</b> ወደ Bonus Balance ተጨምሯል!`,
+          { parse_mode: "HTML" },
+        );
+      } catch { /* non-fatal */ }
+    }
+
+    logger.info({ newUserTelegramId, referrerTelegramId }, "Signup and invite bonuses granted");
+  } catch (err) {
+    logger.error({ err, newUserTelegramId, referrerTelegramId }, "grantSignupBonuses error");
+  }
+}
 
 // ── Shared: grant agent join bonus (5 ETB to agentBalance) ───────────────────
 export async function grantAgentJoinBonus(referrerTelegramId: number, newUserFirstName: string): Promise<void> {
@@ -1798,7 +1839,7 @@ async function handleDepositConfirmation(
   try {
     const inserted = await db.insert(pendingDepositsTable).values({
       telegramId, firstName, amount: `${amount}`, status: "pending",
-      confirmationText: code,
+      confirmationText: userText,
     }).returning();
     const depId = inserted[0]!.id;
 
@@ -1814,8 +1855,13 @@ async function handleDepositConfirmation(
       const kb = new InlineKeyboard().text("✅ አፀድቅ", `approve_${depId}`).text("❌ ሰርዝ", `reject_${depId}`);
       await bot.api.sendMessage(
         ADMIN_ID,
-        `📥 <b>Deposit #${depId}</b>\n👤 ${firstName} (${telegramId})\n💰 <b>${amount} ብር</b>\n🔖 ኮድ: <code>${code}</code>`,
+        `📥 <b>Deposit #${depId}</b>\n👤 ${esc(firstName)} (${telegramId})\n💰 <b>${amount} ብር</b>\n🔖 ኮድ: <code>${esc(code)}</code>`,
         { parse_mode: "HTML", reply_markup: kb }
+      );
+      await bot.api.sendMessage(
+        ADMIN_ID,
+        `📋 <b>ሙሉ Teller/SMS text:</b>\n<pre>${esc(userText)}</pre>`,
+        { parse_mode: "HTML" }
       );
     }
     logger.info({ telegramId, amount, depId, code }, "Deposit submitted (pending)");
@@ -2002,10 +2048,10 @@ bot.callbackQuery(/^lbox_(\d+)_(\d+)$/, async (ctx) => {
   }
 });
 
-// Minimum general lifetime deposit required for any withdrawal.
-const WITHDRAW_MIN_DEPOSIT = 50;
-// Minimum lifetime deposit required to make the bonus balance withdrawable.
-const BONUS_WITHDRAW_MIN_DEPOSIT = 100;
+// Minimum lifetime deposit required for any withdrawal.
+const WITHDRAW_MIN_DEPOSIT = 100;
+// Bonus balance uses the same withdrawal deposit requirement.
+const BONUS_WITHDRAW_MIN_DEPOSIT = WITHDRAW_MIN_DEPOSIT;
 
 // Returns true if the player has at least one approved deposit >= minAmount (lifetime).
 async function hasLifetimeDeposit(telegramId: number, minAmount: number): Promise<boolean> {
@@ -2031,20 +2077,20 @@ async function handleWithdrawRequest(
   accountName: string
 ) {
   try {
-    // Lifetime deposit requirement: at least one approved deposit >= 50 ETB
+    // Require one approved lifetime deposit at or above the withdrawal threshold.
     const qualifyingDeposit = await db
       .select({ id: pendingDepositsTable.id })
       .from(pendingDepositsTable)
       .where(and(
         eq(pendingDepositsTable.telegramId, telegramId),
         eq(pendingDepositsTable.status, "approved"),
-        sql`${pendingDepositsTable.amount}::numeric >= 50`
+        sql`${pendingDepositsTable.amount}::numeric >= ${WITHDRAW_MIN_DEPOSIT}`
       ))
       .limit(1);
     if (!qualifyingDeposit.length) {
       await ctx.reply(
         `⛔ <b>ዊዝድሮው ማድረግ አይቻልም</b>\n\n` +
-        `ዊዝድሮው ለማድረግ ቢያንስ አንድ ጊዜ <b>50 ብር ወይም ከዚያ በላይ</b> ዲፖዚት ማድረግ ያስፈልጋል።\n\n` +
+        `ዊዝድሮው ለማድረግ ቢያንስ አንድ ጊዜ <b>${WITHDRAW_MIN_DEPOSIT} ብር ወይም ከዚያ በላይ</b> ዲፖዚት ማድረግ ያስፈልጋል።\n\n` +
         `📌 ዲፖዚት ካደረጉ በኋላ ዊዝድሮው ማድረግ ይቻላል።`,
         { parse_mode: "HTML" }
       );

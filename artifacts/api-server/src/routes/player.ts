@@ -8,6 +8,7 @@ import { appSettings } from "../lib/settings";
 import { verifyTelegramInitData, extractTelegramUser } from "../lib/telegramAuth";
 
 const router: IRouter = Router();
+const MIN_WITHDRAW_DEPOSIT = 100;
 
 router.get("/player/wallet", async (req: Request, res: Response) => {
   const telegramId = Number(req.query["telegramId"]);
@@ -249,6 +250,21 @@ router.post("/player/agent-withdraw", async (req: Request, res: Response) => {
     if (!playerRows.length) { res.status(404).json({ error: "Player not found" }); return; }
     const player = playerRows[0]!;
     if (player.role !== "agent") { res.status(403).json({ error: "Agent ብቻ ነው" }); return; }
+
+    const qualifyingDeposit = await db
+      .select({ id: pendingDepositsTable.id })
+      .from(pendingDepositsTable)
+      .where(and(
+        eq(pendingDepositsTable.telegramId, telegramId),
+        eq(pendingDepositsTable.status, "approved"),
+        sql`${pendingDepositsTable.amount}::numeric >= ${MIN_WITHDRAW_DEPOSIT}`,
+      ))
+      .limit(1);
+    if (!qualifyingDeposit.length) {
+      res.status(400).json({ error: `ዊዝድሮው ለማድረግ ቢያንስ ${MIN_WITHDRAW_DEPOSIT} ብር ዲፖዚት ታሪክ ያስፈልጋል` });
+      return;
+    }
+
     const agentBalance = Number(player.agentBalance);
     if (agentBalance < amount) { res.status(400).json({ error: "Agent balance ይቀነሳሉ — ብቂ ሂሳብ የለም" }); return; }
     // Deduct from agentBalance first

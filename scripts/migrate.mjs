@@ -224,47 +224,6 @@ await run(`
   )`, "lucky_box_claims"
 );
 
-// ─── jackpot ───────────────────────────────────────────────────────────────────
-console.log("\n── jackpot tables ──");
-await run(`
-  CREATE TABLE IF NOT EXISTS jackpot_batches (
-    id           SERIAL PRIMARY KEY,
-    batch_number INTEGER NOT NULL,
-    game_count   INTEGER NOT NULL DEFAULT 0,
-    jackpot_pool NUMERIC(12,2) NOT NULL DEFAULT 0.00,
-    is_active    BOOLEAN NOT NULL DEFAULT true,
-    created_at   TIMESTAMP NOT NULL DEFAULT now(),
-    completed_at TIMESTAMP
-  )`, "jackpot_batches"
-);
-await run(`
-  CREATE TABLE IF NOT EXISTS jackpot_points (
-    id             SERIAL PRIMARY KEY,
-    batch_id       INTEGER NOT NULL,
-    batch_number   INTEGER NOT NULL,
-    telegram_id    BIGINT NOT NULL,
-    first_name     TEXT NOT NULL,
-    points         INTEGER NOT NULL DEFAULT 0,
-    streak_count   INTEGER NOT NULL DEFAULT 1,
-    last_game_count INTEGER NOT NULL DEFAULT 0,
-    created_at     TIMESTAMP NOT NULL DEFAULT now(),
-    updated_at     TIMESTAMP NOT NULL DEFAULT now()
-  )`, "jackpot_points"
-);
-await run(`
-  CREATE UNIQUE INDEX IF NOT EXISTS jackpot_points_batch_player_uidx
-    ON jackpot_points (batch_id, telegram_id)
-`, "jackpot_points unique index"
-);
-await run(`
-  CREATE TABLE IF NOT EXISTS jackpot_round_log (
-    round_id     TEXT PRIMARY KEY,
-    batch_id     INTEGER NOT NULL,
-    game_count   INTEGER NOT NULL,
-    processed_at TIMESTAMP NOT NULL DEFAULT now()
-  )`, "jackpot_round_log"
-);
-
 // ─── promo_codes ───────────────────────────────────────────────────────────────
 console.log("\n── promo_codes tables ──");
 await run(`

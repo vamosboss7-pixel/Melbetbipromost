@@ -873,6 +873,8 @@ function PromoCodesTab() {
 function BroadcastTab() {
   const [subTab, setSubTab] = useState('bot')
   const [msg, setMsg] = useState('')
+  const [imageBase64, setImageBase64] = useState('')
+  const [imageName, setImageName] = useState('')
   const [scheduledAt, setScheduledAt] = useState('')
   const [isDaily, setIsDaily] = useState(false)
   const [duration, setDuration] = useState('10')
@@ -887,13 +889,34 @@ function BroadcastTab() {
 
   useEffect(() => { if (subTab === 'schedule') void loadScheduled() }, [subTab])
 
+  function selectImage(file: File | undefined) {
+    if (!file) return
+    if (!file.type.startsWith('image/')) { show('❌ Image ፋይል ብቻ ይምረጡ'); return }
+    if (file.size > 10 * 1024 * 1024) { show('❌ Image ከ10MB መብለጥ የለበትም'); return }
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') return
+      const comma = reader.result.indexOf(',')
+      setImageBase64(comma >= 0 ? reader.result.slice(comma + 1) : reader.result)
+      setImageName(file.name)
+    }
+    reader.readAsDataURL(file)
+  }
+
   async function sendBot() {
-    if (!msg.trim()) { show('❌ መልዕክት ይጻፉ'); return }
+    if (!msg.trim() && !imageBase64) { show('❌ መልዕክት ወይም image ይምረጡ'); return }
     setSending(true)
-    const res = await apiPost('/api/admin/broadcast/bot', { telegramId: 0, message: msg.trim() })
-    if (res.sent !== undefined) show(`✅ ተላከ: ${res.sent}, ሳይሄድ: ${res.failed}`)
-    else show(`❌ ${res.error ?? 'ስህተት'}`)
-    setSending(false)
+    try {
+      const res = await apiPost('/api/admin/broadcast/bot', { telegramId: 0, message: msg.trim(), imageBase64: imageBase64 || undefined })
+      if (res.sent !== undefined) {
+        const detail = res.errors?.[0] ? ` — ${String(res.errors[0]).slice(0, 120)}` : ''
+        show(`✅ ተላከ: ${res.sent}, ሳይሄድ: ${res.failed}${detail}`)
+      } else show(`❌ ${res.error ?? 'ስህተት'}`)
+    } catch (err) {
+      show(`❌ Broadcast ሊላክ አልቻለም: ${err instanceof Error ? err.message : 'network error'}`)
+    } finally {
+      setSending(false)
+    }
   }
 
   async function sendInApp() {
@@ -906,10 +929,10 @@ function BroadcastTab() {
   }
 
   async function schedule() {
-    if (!msg.trim()) { show('❌ መልዕክት ይጻፉ'); return }
+    if (!msg.trim() && !imageBase64) { show('❌ መልዕክት ወይም image ይምረጡ'); return }
     if (!scheduledAt) { show('❌ ጊዜ ይምረጡ'); return }
     setSending(true)
-    const res = await apiPost('/api/admin/broadcast/schedule', { telegramId: 0, message: msg.trim(), scheduledAt, isDaily })
+    const res = await apiPost('/api/admin/broadcast/schedule', { telegramId: 0, message: msg.trim(), imageBase64: imageBase64 || undefined, scheduledAt, isDaily })
     if (res.ok) { show('✅ Scheduled!'); setMsg(''); setScheduledAt(''); void loadScheduled() }
     else show(`❌ ${res.error ?? 'ስህተት'}`)
     setSending(false)
@@ -937,6 +960,11 @@ function BroadcastTab() {
           <SectionLabel>📢 Bot Broadcast (ሁሉም ተጫዋቾች)</SectionLabel>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <Textarea value={msg} onChange={setMsg} placeholder="HTML ይጠቀሙ: <b>ደማቅ</b>, <i>ሪሪ</i>…" rows={5} />
+            <label style={{ fontSize: 12, color: '#aaa' }}>
+              🖼 Image (አማራጭ)
+              <input type="file" accept="image/*" onChange={e => selectImage(e.target.files?.[0])} style={{ display: 'block', marginTop: 6, width: '100%' }} />
+              {imageName && <span style={{ display: 'block', marginTop: 4, color: '#22c55e' }}>{imageName}</span>}
+            </label>
             <Btn onClick={sendBot} disabled={sending} color="gold">{sending ? 'እየላከ…' : '📢 Broadcast ላክ'}</Btn>
           </div>
         </Card>
@@ -962,6 +990,11 @@ function BroadcastTab() {
             <SectionLabel>⏰ Broadcast ምደቡ</SectionLabel>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <Textarea value={msg} onChange={setMsg} placeholder="የሚላከው መልዕክት…" rows={4} />
+              <label style={{ fontSize: 12, color: '#aaa' }}>
+                🖼 Image (አማራጭ)
+                <input type="file" accept="image/*" onChange={e => selectImage(e.target.files?.[0])} style={{ display: 'block', marginTop: 6, width: '100%' }} />
+                {imageName && <span style={{ display: 'block', marginTop: 4, color: '#22c55e' }}>{imageName}</span>}
+              </label>
               <Input value={scheduledAt} onChange={setScheduledAt} placeholder="ጊዜ" type="datetime-local" />
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#aaa', cursor: 'pointer' }}>
                 <input type="checkbox" checked={isDaily} onChange={e => setIsDaily(e.target.checked)} />
@@ -1140,28 +1173,19 @@ function SettingsTab() {
   const [saving, setSaving] = useState(false)
   const [maintenance, setMaintenance] = useState(false)
   const [toggling, setToggling] = useState(false)
-  const [jackpot, setJackpot] = useState(false)
-  const [togglingJackpot, setTogglingJackpot] = useState(false)
-  const [jackpotSettings, setJackpotSettings] = useState<Record<string, string>>({})
-  const [jackpotBatch, setJackpotBatch] = useState<{ batchNumber: number; gameCount: number; pool: number } | null>(null)
-  const [savingJackpot, setSavingJackpot] = useState(false)
   const [subTab, setSubTab] = useState('game')
   const { msg, show } = useToast()
 
   async function load() {
     setLoading(true)
-    const [gs, rs, ms, js] = await Promise.all([
+    const [gs, rs, ms] = await Promise.all([
       apiGet('/api/admin/settings?telegramId=0'),
       apiGet('/api/admin/room-settings?telegramId=0'),
       apiGet('/api/admin/maintenance?telegramId=0'),
-      apiGet('/api/admin/jackpot?telegramId=0'),
     ])
     setSettings(gs.settings ?? {})
     setRoomSettings(rs.room1 ?? {})
     setMaintenance(ms.enabled ?? false)
-    setJackpot(js.enabled ?? false)
-    setJackpotSettings(Object.fromEntries(Object.entries(js.settings ?? {}).map(([key, value]) => [key, String(value)])))
-    setJackpotBatch(js.activeBatch ?? null)
     setLoading(false)
   }
 
@@ -1205,40 +1229,10 @@ function SettingsTab() {
     setToggling(false)
   }
 
-  async function toggleJackpot() {
-    setTogglingJackpot(true)
-    const res = await apiPost('/api/admin/jackpot/toggle', { telegramId: 0 })
-    if (res.ok) { setJackpot(res.enabled); show(res.enabled ? '🎰 Jackpot ተበርቷል' : '⏸️ Jackpot ዲሴብል ሆኗል') }
-    else show(`❌ ${res.error ?? 'ስህተት'}`)
-    setTogglingJackpot(false)
-  }
-
-  async function saveJackpotSettings() {
-    setSavingJackpot(true)
-    const res = await apiPut('/api/admin/jackpot/settings', {
-      telegramId: 0,
-      settings: {
-        finalGame: jackpotSettings.finalGame,
-        channelId: jackpotSettings.channelId,
-        participationPoints: jackpotSettings.participationPoints,
-        winBonusPoints: jackpotSettings.winBonusPoints,
-        streakMax: jackpotSettings.streakMax,
-        firstPrizePercent: jackpotSettings.firstPrizePercent,
-        secondPrizePercent: jackpotSettings.secondPrizePercent,
-        thirdPrizePercent: jackpotSettings.thirdPrizePercent,
-      },
-    })
-    if (res.ok) show('✅ የጃክፖት ሴቲንጎች ተቀምጠዋል')
-    else show(`❌ ${res.error ?? 'ስህተት'}`)
-    setSavingJackpot(false)
-  }
-
   function S(key: string) { return settings[key] ?? '' }
   function R(key: string) { return roomSettings[key] ?? '' }
   function setS(key: string, v: string) { setSettings(p => ({ ...p, [key]: v })) }
   function setR(key: string, v: string) { setRoomSettings(p => ({ ...p, [key]: v })) }
-  function J(key: string) { return jackpotSettings[key] ?? '' }
-  function setJ(key: string, v: string) { setJackpotSettings(p => ({ ...p, [key]: v })) }
 
   if (loading) return <div style={{ textAlign: 'center', color: '#666', padding: 32 }}>እየጫነ…</div>
 
@@ -1246,7 +1240,7 @@ function SettingsTab() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <Toast msg={msg} />
       <SubTabBar
-        tabs={[{ key: 'game', label: '⚙️ Game Settings' }, { key: 'room', label: '🚪 Room 1' }, { key: 'jackpot', label: '🎰 Jackpot' }, { key: 'maintenance', label: '🔧 Maintenance' }]}
+        tabs={[{ key: 'game', label: '⚙️ Game Settings' }, { key: 'room', label: '🚪 Room 1' }, { key: 'maintenance', label: '🔧 Maintenance' }]}
         active={subTab} onChange={setSubTab}
       />
 
@@ -1310,50 +1304,6 @@ function SettingsTab() {
             </div>
             <Input value={R('minPlayersToStart')} onChange={v => setR('minPlayersToStart', v)} placeholder="Min players to start" type="number" />
             <Btn onClick={saveRoomSettings} disabled={saving} color="gold">{saving ? 'እያስቀምጥ…' : '💾 Room Settings ቀምጥ'}</Btn>
-          </div>
-        </Card>
-      )}
-
-      {subTab === 'jackpot' && (
-        <Card>
-          <SectionLabel>🎰 የጃክፖት ሙሉ ሴቲንግ</SectionLabel>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 12px', borderRadius: 10, background: jackpot ? 'rgba(234,179,8,0.1)' : 'rgba(107,114,128,0.12)', border: `1px solid ${jackpot ? 'rgba(234,179,8,0.35)' : 'rgba(107,114,128,0.35)'}` }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: jackpot ? '#facc15' : '#aaa' }}>{jackpot ? '🎰 Jackpot በርቷል' : '⏸️ Jackpot ጠፍቷል'}</div>
-                  <div style={{ fontSize: 11, color: '#777', marginTop: 2 }}>ጃክፖት ካጠፉ ኮሚሽኑ የአፑ ገቢ ይሆናል</div>
-                </div>
-                <Btn onClick={toggleJackpot} disabled={togglingJackpot} color={jackpot ? 'red' : 'green'} style={{ whiteSpace: 'nowrap' }}>
-                  {togglingJackpot ? '…' : jackpot ? '⏸️ አጥፋ' : '🎰 አብራ'}
-                </Btn>
-              </div>
-            <div style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', color: '#d9c27a', fontSize: 12, lineHeight: 1.5 }}>
-              ከታች ያለው የመጨረሻ ጨዋታ ሲደርስ ጃክፖቱ በራሱ ይከፋፈላል። የሽልማት መቶኛዎች ድምር 100% መሆን አለበት።
-            </div>
-            {jackpotBatch && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', color: '#aaa', fontSize: 12 }}>
-                <span style={{ padding: '7px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.06)' }}>Batch #{jackpotBatch.batchNumber}</span>
-                <span style={{ padding: '7px 10px', borderRadius: 8, background: 'rgba(255,255,255,0.06)' }}>ጨዋታ {jackpotBatch.gameCount}/{J('finalGame')}</span>
-                <span style={{ padding: '7px 10px', borderRadius: 8, background: 'rgba(234,179,8,0.12)', color: '#facc15' }}>{jackpotBatch.pool.toFixed(2)} ETB</span>
-              </div>
-            )}
-            <Input value={J('finalGame')} onChange={v => setJ('finalGame', v)} placeholder="የመጨረሻ ዙር (ለምሳሌ 10)" type="number" />
-            <Input value={J('channelId')} onChange={v => setJ('channelId', v)} placeholder="የTelegram ቻናል (@channel ወይም ID)" />
-            <SectionLabel>⭐ የነጥብ ስሌት</SectionLabel>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Input value={J('participationPoints')} onChange={v => setJ('participationPoints', v)} placeholder="በካርድ የተሳትፎ ነጥብ" type="number" />
-              <Input value={J('winBonusPoints')} onChange={v => setJ('winBonusPoints', v)} placeholder="የአሸናፊ ተጨማሪ ነጥብ" type="number" />
-            </div>
-            <Input value={J('streakMax')} onChange={v => setJ('streakMax', v)} placeholder="የተከታታይ ጨዋታ ከፍተኛ ነጥብ" type="number" />
-            <SectionLabel>🏆 የሽልማት መከፋፈያ (%)</SectionLabel>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Input value={J('firstPrizePercent')} onChange={v => setJ('firstPrizePercent', v)} placeholder="1ኛ ቦታ %" type="number" />
-              <Input value={J('secondPrizePercent')} onChange={v => setJ('secondPrizePercent', v)} placeholder="2ኛ ቦታ %" type="number" />
-              <Input value={J('thirdPrizePercent')} onChange={v => setJ('thirdPrizePercent', v)} placeholder="3ኛ ቦታ %" type="number" />
-            </div>
-            <Btn onClick={saveJackpotSettings} disabled={savingJackpot} color="gold">
-              {savingJackpot ? 'እያስቀምጥ…' : '💾 የጃክፖት ሴቲንግ ቀምጥ'}
-            </Btn>
           </div>
         </Card>
       )}

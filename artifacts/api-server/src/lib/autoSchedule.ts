@@ -2,15 +2,16 @@ import { InputFile, InlineKeyboard } from "grammy";
 import { db } from "./db";
 import { scheduledBroadcastsTable, playersTable, appSettingsTable } from "@workspace/db/schema";
 import { and, eq, lte } from "drizzle-orm";
-import { bot } from "./bot";
+import { bot, getMiniAppUrl } from "./bot";
 import { logger } from "./logger";
 import fs from "node:fs";
 import path from "node:path";
 
+const BROADCAST_DELAY_MS = 40;
+
 function getPlayNowKeyboard(): InlineKeyboard | null {
-  const miniAppUrl = process.env["MINI_APP_URL"] ?? process.env["REPLIT_DOMAINS"]?.split(",")[0];
-  if (!miniAppUrl) return null;
-  const appUrl = `https://${miniAppUrl}`;
+  const appUrl = getMiniAppUrl();
+  if (!appUrl) return null;
   return new InlineKeyboard().add({ text: "🎮 ጨዋታ ጀምር", web_app: { url: appUrl } });
 }
 
@@ -25,7 +26,7 @@ async function fireBroadcast(id: number, message: string, imageData: string | nu
         await bot.api.sendPhoto(
           p.telegramId,
           new InputFile(Buffer.from(imageData, "base64"), "broadcast.jpg"),
-          { caption: message, parse_mode: "HTML", reply_markup: replyMarkup },
+          { ...(message ? { caption: message, parse_mode: "HTML" as const } : {}), reply_markup: replyMarkup },
         );
       } else {
         await bot.api.sendMessage(p.telegramId, message, { parse_mode: "HTML", reply_markup: replyMarkup });
@@ -34,13 +35,14 @@ async function fireBroadcast(id: number, message: string, imageData: string | nu
     } catch {
       failed++;
     }
+    if (BROADCAST_DELAY_MS > 0) await new Promise(resolve => setTimeout(resolve, BROADCAST_DELAY_MS));
   }
   logger.info({ id, sent, failed }, "Scheduled broadcast sent");
 }
 
 // ── Daily Play Bonus broadcast ────────────────────────────────────────────────
 // Sends the 10-ETB claim message+image to all players once per UTC day.
-// The image lives at <workspace_root>/attached_assets/melbet_bingo_promo.png
+// The image lives under <workspace_root>/attached_assets.
 const DAILY_BONUS_IMAGE_PATH = path.join(
   process.cwd(),
   "attached_assets",
@@ -50,9 +52,9 @@ const DAILY_BONUS_IMAGE_PATH = path.join(
 const DAILY_BONUS_MESSAGE =
   `🔥🎉 <b>ዛሬ  የ1 ጨዋታ ቦነስ ለእርሶ !</b> 🎉🔥\n\n` +
   `🎁 <b>አንድ ጨዋታ 10 ብር ቦነስ</b> ይውሰዱና እድልዎን ይሞክሩ!\n\n` +
-  `🏆 <b>MelBet BINGO</b> በአጭር ጊዜ ውስጥ የብዙዎችን ቀልብ እየገዛ  ያለ ተወዳጅ የቢንጎ መድረክ ሆኗል። አሁኑኑ ይቀላቀሉ!\n\n` +
+  `🏆 <b>KEFTA BINGO</b> በአጭር ጊዜ ውስጥ የብዙዎችን ቀልብ እየገዛ  ያለ ተወዳጅ የቢንጎ መድረክ ሆኗል። አሁኑኑ ይቀላቀሉ!\n\n` +
   `✨ <b>የዛሬ ቦነሶች</b>\n` +
-  `🎁 ለአዲስ ተጫዋቾች – <b>20 ብር በቀጥታ ቦነስ</b>\n` +
+  `🎁 ለአዲስ ተጫዋቾች – <b>30 ብር በቀጥታ ቦነስ</b>\n` +
   `💸 ጓደኛ ሲጋብዙ – <b>ተጨማሪ ቦነስ </b>\n` +
   `👥 በየቀኑ አዳዲስ ተጫዋቾች እየተቀላቀሉ ነው\n\n` +
   `መልካም እድል 😎\n\n` +

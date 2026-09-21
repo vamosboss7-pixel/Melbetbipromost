@@ -14,12 +14,6 @@ export function getGameEngine(): GameEngine | null {
   return gameEngine10;
 }
 
-export async function initGameEngines(): Promise<void> {
-  if (gameEngine10) {
-    await gameEngine10.initJackpotPool();
-  }
-}
-
 export function getGameEngine5(): GameEngine | null {
   return null;
 }

@@ -115,7 +115,7 @@ export default function WinnerPage() {
 
           <div style={{ textAlign: 'center', lineHeight: 1.1 }}>
             <div style={{ fontSize: 30, fontWeight: 900, color: '#ffffff', letterSpacing: '0.04em', fontFamily: 'Oswald, sans-serif' }}>
-              MELBIT CHAMPION
+              KEFTA CHAMPION
             </div>
             <div style={{ fontSize: 30, fontWeight: 900, color: '#ffffff', letterSpacing: '0.04em', fontFamily: 'Oswald, sans-serif' }}>
               DECLARED

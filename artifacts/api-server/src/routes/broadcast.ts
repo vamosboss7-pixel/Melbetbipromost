@@ -2,21 +2,21 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { InputFile, InlineKeyboard } from "grammy";
 import { db } from "../lib/db";
 import { playersTable, scheduledBroadcastsTable } from "@workspace/db/schema";
-import { bot } from "../lib/bot";
+import { bot, getMiniAppUrl } from "../lib/bot";
 import { getIo } from "../lib/gameSocket";
 import { logger } from "../lib/logger";
 import { eq, desc } from "drizzle-orm";
 import { hasValidToken } from "./admin";
 
 function getPlayNowKeyboard(): InlineKeyboard | null {
-  const miniAppUrl = process.env["MINI_APP_URL"] ?? process.env["REPLIT_DOMAINS"]?.split(",")[0];
-  if (!miniAppUrl) return null;
-  const appUrl = `https://${miniAppUrl}`;
+  const appUrl = getMiniAppUrl();
+  if (!appUrl) return null;
   return new InlineKeyboard().add({ text: "🎮 ጨዋታ ጀምር", web_app: { url: appUrl } });
 }
 
 const router: IRouter = Router();
 const ADMIN_ID = Number(process.env["ADMIN_TELEGRAM_ID"] ?? "0");
+const BROADCAST_DELAY_MS = 40;
 
 function isAdmin(telegramId: number) {
   return ADMIN_ID > 0 && telegramId === ADMIN_ID;
@@ -30,33 +30,60 @@ function resolveAdmin(req: Request, telegramId: number): boolean {
 router.post("/admin/broadcast/bot", async (req: Request, res: Response) => {
   const { telegramId, message, imageBase64 } = req.body as { telegramId: number; message?: string; imageBase64?: string };
   if (!resolveAdmin(req, telegramId)) { res.status(403).json({ error: "Forbidden" }); return; }
-  if (!message?.trim()) { res.status(400).json({ error: "message required" }); return; }
+  if (!process.env["TELEGRAM_BOT_TOKEN"]) { res.status(503).json({ error: "TELEGRAM_BOT_TOKEN is not configured" }); return; }
+  const text = message?.trim() ?? "";
+  const image = imageBase64?.trim() ?? "";
+  if (!text && !image) { res.status(400).json({ error: "message or image required" }); return; }
 
-  const players = await db.select({ telegramId: playersTable.telegramId }).from(playersTable);
-  let sent = 0, failed = 0;
+  try {
+    const players = await db.select({ telegramId: playersTable.telegramId }).from(playersTable);
+    let sent = 0, failed = 0;
+    const errors: string[] = [];
+    const kb = getPlayNowKeyboard();
+    const replyMarkup = kb ? kb : undefined;
+    const photoBuffer = image ? Buffer.from(image, "base64") : null;
 
-  const imgFile = imageBase64?.trim()
-    ? new InputFile(Buffer.from(imageBase64.trim(), "base64"), "broadcast.jpg")
-    : null;
-
-  const kb = getPlayNowKeyboard();
-  const replyMarkup = kb ? kb : undefined;
-
-  for (const p of players) {
-    try {
-      if (imgFile) {
-        await bot.api.sendPhoto(p.telegramId, new InputFile(Buffer.from(imageBase64!.trim(), "base64"), "broadcast.jpg"), { caption: message.trim(), parse_mode: "HTML", reply_markup: replyMarkup });
-      } else {
-        await bot.api.sendMessage(p.telegramId, message.trim(), { parse_mode: "HTML", reply_markup: replyMarkup });
+    for (const p of players) {
+      try {
+        if (photoBuffer) {
+          await bot.api.sendPhoto(
+            p.telegramId,
+            new InputFile(photoBuffer, "broadcast.jpg"),
+            { ...(text ? { caption: text, parse_mode: "HTML" as const } : {}), reply_markup: replyMarkup },
+          );
+        } else {
+          await bot.api.sendMessage(p.telegramId, text, { parse_mode: "HTML", reply_markup: replyMarkup });
+        }
+        sent++;
+      } catch (firstErr) {
+        try {
+          if (photoBuffer) {
+            await bot.api.sendPhoto(
+              p.telegramId,
+              new InputFile(photoBuffer, "broadcast.jpg"),
+              text ? { caption: text } : {},
+            );
+          } else {
+            await bot.api.sendMessage(p.telegramId, text);
+          }
+          sent++;
+        } catch (secondErr) {
+          failed++;
+          if (errors.length < 5) {
+            const detail = secondErr instanceof Error ? secondErr.message : String(secondErr);
+            errors.push(`${p.telegramId}: ${detail || String(firstErr)}`);
+          }
+        }
       }
-      sent++;
-    } catch {
-      failed++;
+      if (BROADCAST_DELAY_MS > 0) await new Promise(resolve => setTimeout(resolve, BROADCAST_DELAY_MS));
     }
-  }
 
-  logger.info({ sent, failed }, "Bot broadcast sent");
-  res.json({ sent, failed, total: players.length });
+    logger.info({ sent, failed, errors }, "Bot broadcast sent");
+    res.json({ sent, failed, total: players.length, errors });
+  } catch (err) {
+    logger.error({ err }, "Bot broadcast failed");
+    res.status(500).json({ error: "Broadcast failed" });
+  }
 });
 
 // POST /api/admin/broadcast/inapp — emit popup to all connected clients via socket
@@ -80,7 +107,9 @@ router.post("/admin/broadcast/schedule", async (req: Request, res: Response) => 
     telegramId: number; message?: string; imageBase64?: string; scheduledAt?: string; isDaily?: boolean;
   };
   if (!resolveAdmin(req, telegramId)) { res.status(403).json({ error: "Forbidden" }); return; }
-  if (!message?.trim()) { res.status(400).json({ error: "message required" }); return; }
+  const text = message?.trim() ?? "";
+  const image = imageBase64?.trim() ?? "";
+  if (!text && !image) { res.status(400).json({ error: "message or image required" }); return; }
   if (!scheduledAt) { res.status(400).json({ error: "scheduledAt required" }); return; }
 
   const date = new Date(scheduledAt);
@@ -88,8 +117,8 @@ router.post("/admin/broadcast/schedule", async (req: Request, res: Response) => 
 
   try {
     const inserted = await db.insert(scheduledBroadcastsTable).values({
-      message: message.trim(),
-      imageUrl: imageBase64?.trim() || null,
+      message: text,
+      imageUrl: image || null,
       scheduledAt: date,
       isDaily: !!isDaily,
     }).returning();

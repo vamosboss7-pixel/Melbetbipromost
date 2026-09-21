@@ -12,7 +12,7 @@ import AdminPage from './pages/AdminPage'
 import BottomNav from './components/BottomNav'
 
 // Routes where the bottom nav should NOT appear
-const HIDDEN_NAV_ROUTES = ['/game', '/slots', '/winner', '/admin']
+const HIDDEN_NAV_ROUTES = ['/', '/game', '/slots', '/winner', '/admin']
 
 function AppShell() {
   const [location] = useLocation()
@@ -22,7 +22,7 @@ function AppShell() {
     return <AdminPage />
   }
 
-  const showNav = !HIDDEN_NAV_ROUTES.includes(location) && location !== '/'
+  const showNav = !HIDDEN_NAV_ROUTES.includes(location)
 
   return (
     <div

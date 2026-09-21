@@ -29,15 +29,6 @@ export type SettingKey =
   | "inviteBonusAmount"
   | "inviteBonusMinDeposit"
   | "welcomeImageBase64"
-  | "jackpotEnabled"
-  | "jackpotFinalGame"
-  | "jackpotChannelId"
-  | "jackpotParticipationPoints"
-  | "jackpotWinBonusPoints"
-  | "jackpotStreakMax"
-  | "jackpotFirstPrizePercent"
-  | "jackpotSecondPrizePercent"
-  | "jackpotThirdPrizePercent"
   | "wageringMultiplier"
   | "room1_stakePerCard"
   | "room1_commissionPercent"
@@ -56,22 +47,13 @@ export const SETTING_DEFAULTS: Record<SettingKey, string> = {
   ballIntervalSeconds: "3",
   autoReportHour: "-1",
   reportAdminIds: process.env["ADMIN_TELEGRAM_ID"] ?? "",
-  registerBonusEnabled: "false",
-  registerBonusAmount: "0",
+  registerBonusEnabled: "true",
+  registerBonusAmount: "30",
   inviteBonusEnabled: "true",
   inviteBonusPercent: "5",
-  inviteBonusAmount: "0",
+  inviteBonusAmount: "10",
   inviteBonusMinDeposit: "0",
   welcomeImageBase64: "",
-  jackpotEnabled: "true",
-  jackpotFinalGame: "10",
-  jackpotChannelId: process.env["JACKPOT_CHANNEL_ID"] ?? "@melbitjackpot",
-  jackpotParticipationPoints: "4",
-  jackpotWinBonusPoints: "3",
-  jackpotStreakMax: "8",
-  jackpotFirstPrizePercent: "50",
-  jackpotSecondPrizePercent: "30",
-  jackpotThirdPrizePercent: "20",
   wageringMultiplier: "30",
   room1_stakePerCard: "10",
   room1_commissionPercent: "10",

@@ -14,7 +14,6 @@ export interface GameState {
   netPrizePool: number
   calledBalls: number[]
   currentBall: number | null
-  jackpotPool: number
 }
 
 export interface Winner {
@@ -41,7 +40,6 @@ const DEFAULT_STATE: GameState = {
   netPrizePool: 0,
   calledBalls: [],
   currentBall: null,
-  jackpotPool: 0,
 }
 
 /** Mirrors server getWinPattern — returns true if any winning pattern is complete */

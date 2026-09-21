@@ -1,9 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { webhookCallback } from "grammy";
-import { bot, checkChannelMembership, grantAgentJoinBonus, USE_POLLING, pendingReferrals } from "../lib/bot";
+import { bot, checkChannelMembership, grantAgentJoinBonus, grantSignupBonuses, USE_POLLING, pendingReferrals } from "../lib/bot";
 import { db } from "../lib/db";
 import { playersTable, transactionsTable, appSettingsTable } from "@workspace/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { verifyTelegramInitData, extractTelegramUser } from "../lib/telegramAuth";
 import { appSettings } from "../lib/settings";
@@ -188,27 +188,17 @@ router.post("/auth/telegram", async (req: Request, res: Response) => {
       player = inserted[0]!;
       logger.info({ telegramId: tgUser.id, invitedBy: validReferrer }, "New player registered");
 
-      // Grant agent join bonus if referrer is an agent
+      // Registration and inviter bonuses are awarded once for each new player.
+      await grantSignupBonuses(tgUser.id, validReferrer, tgUser.first_name);
+
+      // Preserve the separate agent-wallet join bonus for agent referrers.
       if (validReferrer) {
         void grantAgentJoinBonus(validReferrer, tgUser.first_name);
       }
-
-      // Grant 20 ETB registration bonus to bonusBalance (always — non-withdrawable until wagering met)
-      const SIGNUP_BONUS_ETB = 20;
-      await db.update(playersTable).set({
-        bonusBalance: sql`${playersTable.bonusBalance} + ${SIGNUP_BONUS_ETB}`,
-      }).where(eq(playersTable.telegramId, tgUser.id));
-      await db.insert(transactionsTable).values({
-        telegramId: tgUser.id,
-        type: "register_bonus",
-        amount: `${SIGNUP_BONUS_ETB}`,
-        status: "approved",
-        note: "20 ብር የምዝገባ ቦነስ (Bonus Balance)",
-      });
       // Refresh player data with updated balance
       const refreshed = await db.select().from(playersTable).where(eq(playersTable.telegramId, tgUser.id)).limit(1);
       player = refreshed[0] ?? player;
-      logger.info({ telegramId: tgUser.id, bonusAmount: SIGNUP_BONUS_ETB }, "Signup bonus granted to bonusBalance");
+      logger.info({ telegramId: tgUser.id, signupBonus: 30, inviteBonus: validReferrer ? 10 : 0 }, "Signup bonuses granted");
     }
 
     res.json({

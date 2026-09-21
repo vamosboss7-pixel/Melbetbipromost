@@ -9,7 +9,6 @@ import promoRouter from "./promo";
 import luckyBoxesRouter from "./luckyBoxes";
 import gameRouter from "./game";
 import bonusesRouter from "./bonuses";
-import jackpotRouter from "./jackpot";
 
 const router: IRouter = Router();
 
@@ -23,6 +22,5 @@ router.use(promoRouter);
 router.use(luckyBoxesRouter);
 router.use(gameRouter);
 router.use(bonusesRouter);
-router.use(jackpotRouter);
 
 export default router;
