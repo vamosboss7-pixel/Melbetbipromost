@@ -7,6 +7,8 @@ import { logger } from "./logger";
 import fs from "node:fs";
 import path from "node:path";
 
+const BROADCAST_DELAY_MS = 40;
+
 function getPlayNowKeyboard(): InlineKeyboard | null {
   const appUrl = getMiniAppUrl();
   if (!appUrl) return null;
@@ -33,6 +35,7 @@ async function fireBroadcast(id: number, message: string, imageData: string | nu
     } catch {
       failed++;
     }
+    if (BROADCAST_DELAY_MS > 0) await new Promise(resolve => setTimeout(resolve, BROADCAST_DELAY_MS));
   }
   logger.info({ id, sent, failed }, "Scheduled broadcast sent");
 }

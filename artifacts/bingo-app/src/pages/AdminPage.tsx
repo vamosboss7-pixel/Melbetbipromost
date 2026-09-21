@@ -906,10 +906,17 @@ function BroadcastTab() {
   async function sendBot() {
     if (!msg.trim() && !imageBase64) { show('❌ መልዕክት ወይም image ይምረጡ'); return }
     setSending(true)
-    const res = await apiPost('/api/admin/broadcast/bot', { telegramId: 0, message: msg.trim(), imageBase64: imageBase64 || undefined })
-    if (res.sent !== undefined) show(`✅ ተላከ: ${res.sent}, ሳይሄድ: ${res.failed}`)
-    else show(`❌ ${res.error ?? 'ስህተት'}`)
-    setSending(false)
+    try {
+      const res = await apiPost('/api/admin/broadcast/bot', { telegramId: 0, message: msg.trim(), imageBase64: imageBase64 || undefined })
+      if (res.sent !== undefined) {
+        const detail = res.errors?.[0] ? ` — ${String(res.errors[0]).slice(0, 120)}` : ''
+        show(`✅ ተላከ: ${res.sent}, ሳይሄድ: ${res.failed}${detail}`)
+      } else show(`❌ ${res.error ?? 'ስህተት'}`)
+    } catch (err) {
+      show(`❌ Broadcast ሊላክ አልቻለም: ${err instanceof Error ? err.message : 'network error'}`)
+    } finally {
+      setSending(false)
+    }
   }
 
   async function sendInApp() {

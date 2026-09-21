@@ -16,6 +16,7 @@ function getPlayNowKeyboard(): InlineKeyboard | null {
 
 const router: IRouter = Router();
 const ADMIN_ID = Number(process.env["ADMIN_TELEGRAM_ID"] ?? "0");
+const BROADCAST_DELAY_MS = 40;
 
 function isAdmin(telegramId: number) {
   return ADMIN_ID > 0 && telegramId === ADMIN_ID;
@@ -29,6 +30,7 @@ function resolveAdmin(req: Request, telegramId: number): boolean {
 router.post("/admin/broadcast/bot", async (req: Request, res: Response) => {
   const { telegramId, message, imageBase64 } = req.body as { telegramId: number; message?: string; imageBase64?: string };
   if (!resolveAdmin(req, telegramId)) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!process.env["TELEGRAM_BOT_TOKEN"]) { res.status(503).json({ error: "TELEGRAM_BOT_TOKEN is not configured" }); return; }
   const text = message?.trim() ?? "";
   const image = imageBase64?.trim() ?? "";
   if (!text && !image) { res.status(400).json({ error: "message or image required" }); return; }
@@ -36,28 +38,48 @@ router.post("/admin/broadcast/bot", async (req: Request, res: Response) => {
   try {
     const players = await db.select({ telegramId: playersTable.telegramId }).from(playersTable);
     let sent = 0, failed = 0;
+    const errors: string[] = [];
     const kb = getPlayNowKeyboard();
     const replyMarkup = kb ? kb : undefined;
+    const photoBuffer = image ? Buffer.from(image, "base64") : null;
 
     for (const p of players) {
       try {
-        if (image) {
+        if (photoBuffer) {
           await bot.api.sendPhoto(
             p.telegramId,
-            new InputFile(Buffer.from(image, "base64"), "broadcast.jpg"),
+            new InputFile(photoBuffer, "broadcast.jpg"),
             { ...(text ? { caption: text, parse_mode: "HTML" as const } : {}), reply_markup: replyMarkup },
           );
         } else {
           await bot.api.sendMessage(p.telegramId, text, { parse_mode: "HTML", reply_markup: replyMarkup });
         }
         sent++;
-      } catch {
-        failed++;
+      } catch (firstErr) {
+        try {
+          if (photoBuffer) {
+            await bot.api.sendPhoto(
+              p.telegramId,
+              new InputFile(photoBuffer, "broadcast.jpg"),
+              text ? { caption: text } : {},
+            );
+          } else {
+            await bot.api.sendMessage(p.telegramId, text);
+          }
+          sent++;
+        } catch (secondErr) {
+          failed++;
+          if (errors.length < 5) {
+            const detail = secondErr instanceof Error ? secondErr.message : String(secondErr);
+            errors.push(`${p.telegramId}: ${detail || String(firstErr)}`);
+          }
+        }
       }
+      if (BROADCAST_DELAY_MS > 0) await new Promise(resolve => setTimeout(resolve, BROADCAST_DELAY_MS));
     }
 
-    logger.info({ sent, failed }, "Bot broadcast sent");
-    res.json({ sent, failed, total: players.length });
+    logger.info({ sent, failed, errors }, "Bot broadcast sent");
+    res.json({ sent, failed, total: players.length, errors });
   } catch (err) {
     logger.error({ err }, "Bot broadcast failed");
     res.status(500).json({ error: "Broadcast failed" });
