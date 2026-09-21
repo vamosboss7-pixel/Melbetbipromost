@@ -2,15 +2,14 @@ import { InputFile, InlineKeyboard } from "grammy";
 import { db } from "./db";
 import { scheduledBroadcastsTable, playersTable, appSettingsTable } from "@workspace/db/schema";
 import { and, eq, lte } from "drizzle-orm";
-import { bot } from "./bot";
+import { bot, getMiniAppUrl } from "./bot";
 import { logger } from "./logger";
 import fs from "node:fs";
 import path from "node:path";
 
 function getPlayNowKeyboard(): InlineKeyboard | null {
-  const miniAppUrl = process.env["MINI_APP_URL"] ?? process.env["REPLIT_DOMAINS"]?.split(",")[0];
-  if (!miniAppUrl) return null;
-  const appUrl = `https://${miniAppUrl}`;
+  const appUrl = getMiniAppUrl();
+  if (!appUrl) return null;
   return new InlineKeyboard().add({ text: "🎮 ጨዋታ ጀምር", web_app: { url: appUrl } });
 }
 
@@ -25,7 +24,7 @@ async function fireBroadcast(id: number, message: string, imageData: string | nu
         await bot.api.sendPhoto(
           p.telegramId,
           new InputFile(Buffer.from(imageData, "base64"), "broadcast.jpg"),
-          { caption: message, parse_mode: "HTML", reply_markup: replyMarkup },
+          { ...(message ? { caption: message, parse_mode: "HTML" as const } : {}), reply_markup: replyMarkup },
         );
       } else {
         await bot.api.sendMessage(p.telegramId, message, { parse_mode: "HTML", reply_markup: replyMarkup });

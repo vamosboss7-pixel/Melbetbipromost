@@ -873,6 +873,8 @@ function PromoCodesTab() {
 function BroadcastTab() {
   const [subTab, setSubTab] = useState('bot')
   const [msg, setMsg] = useState('')
+  const [imageBase64, setImageBase64] = useState('')
+  const [imageName, setImageName] = useState('')
   const [scheduledAt, setScheduledAt] = useState('')
   const [isDaily, setIsDaily] = useState(false)
   const [duration, setDuration] = useState('10')
@@ -887,10 +889,24 @@ function BroadcastTab() {
 
   useEffect(() => { if (subTab === 'schedule') void loadScheduled() }, [subTab])
 
+  function selectImage(file: File | undefined) {
+    if (!file) return
+    if (!file.type.startsWith('image/')) { show('❌ Image ፋይል ብቻ ይምረጡ'); return }
+    if (file.size > 10 * 1024 * 1024) { show('❌ Image ከ10MB መብለጥ የለበትም'); return }
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') return
+      const comma = reader.result.indexOf(',')
+      setImageBase64(comma >= 0 ? reader.result.slice(comma + 1) : reader.result)
+      setImageName(file.name)
+    }
+    reader.readAsDataURL(file)
+  }
+
   async function sendBot() {
-    if (!msg.trim()) { show('❌ መልዕክት ይጻፉ'); return }
+    if (!msg.trim() && !imageBase64) { show('❌ መልዕክት ወይም image ይምረጡ'); return }
     setSending(true)
-    const res = await apiPost('/api/admin/broadcast/bot', { telegramId: 0, message: msg.trim() })
+    const res = await apiPost('/api/admin/broadcast/bot', { telegramId: 0, message: msg.trim(), imageBase64: imageBase64 || undefined })
     if (res.sent !== undefined) show(`✅ ተላከ: ${res.sent}, ሳይሄድ: ${res.failed}`)
     else show(`❌ ${res.error ?? 'ስህተት'}`)
     setSending(false)
@@ -906,10 +922,10 @@ function BroadcastTab() {
   }
 
   async function schedule() {
-    if (!msg.trim()) { show('❌ መልዕክት ይጻፉ'); return }
+    if (!msg.trim() && !imageBase64) { show('❌ መልዕክት ወይም image ይምረጡ'); return }
     if (!scheduledAt) { show('❌ ጊዜ ይምረጡ'); return }
     setSending(true)
-    const res = await apiPost('/api/admin/broadcast/schedule', { telegramId: 0, message: msg.trim(), scheduledAt, isDaily })
+    const res = await apiPost('/api/admin/broadcast/schedule', { telegramId: 0, message: msg.trim(), imageBase64: imageBase64 || undefined, scheduledAt, isDaily })
     if (res.ok) { show('✅ Scheduled!'); setMsg(''); setScheduledAt(''); void loadScheduled() }
     else show(`❌ ${res.error ?? 'ስህተት'}`)
     setSending(false)
@@ -937,6 +953,11 @@ function BroadcastTab() {
           <SectionLabel>📢 Bot Broadcast (ሁሉም ተጫዋቾች)</SectionLabel>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <Textarea value={msg} onChange={setMsg} placeholder="HTML ይጠቀሙ: <b>ደማቅ</b>, <i>ሪሪ</i>…" rows={5} />
+            <label style={{ fontSize: 12, color: '#aaa' }}>
+              🖼 Image (አማራጭ)
+              <input type="file" accept="image/*" onChange={e => selectImage(e.target.files?.[0])} style={{ display: 'block', marginTop: 6, width: '100%' }} />
+              {imageName && <span style={{ display: 'block', marginTop: 4, color: '#22c55e' }}>{imageName}</span>}
+            </label>
             <Btn onClick={sendBot} disabled={sending} color="gold">{sending ? 'እየላከ…' : '📢 Broadcast ላክ'}</Btn>
           </div>
         </Card>
@@ -962,6 +983,11 @@ function BroadcastTab() {
             <SectionLabel>⏰ Broadcast ምደቡ</SectionLabel>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <Textarea value={msg} onChange={setMsg} placeholder="የሚላከው መልዕክት…" rows={4} />
+              <label style={{ fontSize: 12, color: '#aaa' }}>
+                🖼 Image (አማራጭ)
+                <input type="file" accept="image/*" onChange={e => selectImage(e.target.files?.[0])} style={{ display: 'block', marginTop: 6, width: '100%' }} />
+                {imageName && <span style={{ display: 'block', marginTop: 4, color: '#22c55e' }}>{imageName}</span>}
+              </label>
               <Input value={scheduledAt} onChange={setScheduledAt} placeholder="ጊዜ" type="datetime-local" />
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#aaa', cursor: 'pointer' }}>
                 <input type="checkbox" checked={isDaily} onChange={e => setIsDaily(e.target.checked)} />
