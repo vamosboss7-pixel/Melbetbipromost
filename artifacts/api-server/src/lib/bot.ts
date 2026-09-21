@@ -1036,8 +1036,8 @@ bot.command("pending", async (ctx) => {
     for (const dep of deposits) {
       const kb = new InlineKeyboard().text("✅ አፀድቅ", `approve_${dep.id}`).text("❌ ሰርዝ", `reject_${dep.id}`);
       await ctx.reply(
-        `📥 <b>Deposit #${dep.id}</b>\n👤 ${dep.firstName} (${dep.telegramId})\n💰 <b>${Number(dep.amount).toFixed(0)} ብር</b>\n` +
-        (dep.confirmationText ? `📝 Confirmation:\n<code>${dep.confirmationText}</code>` : ""),
+        `📥 <b>Deposit #${dep.id}</b>\n👤 ${esc(dep.firstName)} (${dep.telegramId})\n💰 <b>${Number(dep.amount).toFixed(0)} ብር</b>\n` +
+        (dep.confirmationText ? `📝 Full Teller/SMS text:\n<pre>${esc(dep.confirmationText)}</pre>` : ""),
         { parse_mode: "HTML", reply_markup: kb }
       );
     }
@@ -1839,7 +1839,7 @@ async function handleDepositConfirmation(
   try {
     const inserted = await db.insert(pendingDepositsTable).values({
       telegramId, firstName, amount: `${amount}`, status: "pending",
-      confirmationText: code,
+      confirmationText: userText,
     }).returning();
     const depId = inserted[0]!.id;
 
@@ -1855,8 +1855,13 @@ async function handleDepositConfirmation(
       const kb = new InlineKeyboard().text("✅ አፀድቅ", `approve_${depId}`).text("❌ ሰርዝ", `reject_${depId}`);
       await bot.api.sendMessage(
         ADMIN_ID,
-        `📥 <b>Deposit #${depId}</b>\n👤 ${firstName} (${telegramId})\n💰 <b>${amount} ብር</b>\n🔖 ኮድ: <code>${code}</code>`,
+        `📥 <b>Deposit #${depId}</b>\n👤 ${esc(firstName)} (${telegramId})\n💰 <b>${amount} ብር</b>\n🔖 ኮድ: <code>${esc(code)}</code>`,
         { parse_mode: "HTML", reply_markup: kb }
+      );
+      await bot.api.sendMessage(
+        ADMIN_ID,
+        `📋 <b>ሙሉ Teller/SMS text:</b>\n<pre>${esc(userText)}</pre>`,
+        { parse_mode: "HTML" }
       );
     }
     logger.info({ telegramId, amount, depId, code }, "Deposit submitted (pending)");
